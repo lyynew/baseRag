@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 环境与密钥
+.env
+.env.local
+*.pem
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 前端
+node_modules/
+dist/
+.vite/
+
+# 运行时产物
+*.log
+logs/
+uploads/
+tmp/
+
+# MinIO 自建镜像的大二进制（106MB + 30MB，不入库，重新下载见 deploy/minio-build/Dockerfile）
+deploy/minio-build/minio
+deploy/minio-build/mc
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 宿主工具的工作区数据（含会话元数据，不属于项目源码）
+.workbuddy/
+
+# 测试与覆盖率产物
+.coverage
+htmlcov/
+.pytest_cache/

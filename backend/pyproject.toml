@@ -1,0 +1,62 @@
+[project]
+name = "rag-backend"
+version = "0.1.0"
+description = "企业内部 RAG 知识库系统 - 后端服务"
+requires-python = ">=3.11,<3.14"
+
+dependencies = [
+    # Web
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+    # 配置与校验
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    # 数据库：aiomysql 为纯 Python 实现，避免 asyncmy 在 3.13 无预编译 wheel 的问题
+    "sqlalchemy[asyncio]>=2.0.36",
+    "aiomysql>=0.2.0",
+    "pymysql>=1.1.1",
+    "alembic>=1.14.0",
+    "greenlet>=3.1.0",
+    # 认证与权限（权限用表驱动 RBAC，见 app/core/rbac.py，不引入 Casbin）
+    "pyjwt>=2.9.0",
+    "bcrypt>=4.2.0",
+    # 缓存与任务
+    "redis>=5.1.0",
+    "celery[redis]>=5.4.0",
+    # 向量库与对象存储
+    "pymilvus>=2.5.0",
+    "minio>=7.2.9",
+    # 模型调用
+    "httpx>=0.27.0",
+    "openai>=1.54.0",
+    # 可观测
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+    "ruff>=0.7.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # FastAPI Depends 在默认参数中是标准写法
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
