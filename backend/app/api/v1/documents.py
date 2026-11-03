@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, File, Query, UploadFile
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession
@@ -210,19 +210,29 @@ async def delete_document(doc_id: int, db: DbSession, user: CurrentUser) -> dict
     doc = await _get_doc_or_404(db, doc_id)
     kb = await kb_service.ensure_kb_access(db, user, doc.kb_id, need_write=True)
 
-    # 先删向量，再删记录；向量删除失败不阻断（会有孤儿向量，后续可用重建清理）
+    # 先删向量再删记录。顺序很关键：
+    # 向量删不掉就抛错、不软删文档——否则文档"看着没了"，检索却还能命中它的内容，
+    # 而且没有任何地方能看出来为什么（本次实际发生过：删了 README 仍被引用）。
     try:
-        store = get_vector_store()
-        store.delete_by_doc(doc.id)
+        get_vector_store().delete_by_doc(doc.id)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("milvus_delete_failed", doc_id=doc.id, error=str(exc))
+        logger.error("milvus_delete_failed", doc_id=doc.id, error=str(exc))
+        raise AppError(
+            "向量清理失败，文档未删除，请稍后重试",
+            code=ErrorCode.INTERNAL_ERROR,
+            status_code=503,
+        ) from exc
+
+    # 切片行一并删除：软删文档而留着 chunks，会成为永远查不到来源的孤儿行
+    await db.execute(delete(Chunk).where(Chunk.doc_id == doc.id))
 
     await get_storage().delete(doc.storage_key)
-    doc.is_deleted = 1
-
+    # 注意顺序：先用旧值扣减统计，再清零，否则 kb.chunk_count 会减成 0
     kb.doc_count = max(0, kb.doc_count - 1)
     kb.total_size_bytes = max(0, kb.total_size_bytes - doc.file_size)
     kb.chunk_count = max(0, kb.chunk_count - doc.chunk_count)
+    doc.is_deleted = 1
+    doc.chunk_count = 0
 
     await db.commit()
     logger.info("doc_deleted", doc_id=doc_id, kb_id=doc.kb_id, by=user.id)

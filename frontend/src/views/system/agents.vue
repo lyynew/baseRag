@@ -1,55 +1,87 @@
 <template>
   <div>
     <div class="head">
-      <div>
-        <h2>智能体</h2>
-        <p class="sub">
-          把模型、知识库、提示词、检索参数封装成一个可发布的整体。前台用户只能选用，不能改配置。
-        </p>
+      <div class="head-left">
+        <div class="head-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+            <path
+              d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3zM18.5 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"
+              fill="currentColor"
+            />
+          </svg>
+        </div>
+        <div>
+          <h2>智能体</h2>
+          <p class="sub">
+            把模型、知识库、提示词、检索参数封装成可发布的整体。前台用户只能选用，不能改配置。
+          </p>
+        </div>
       </div>
-      <el-button type="primary" @click="openCreate">
-        <el-icon><Plus /></el-icon>&nbsp;新建智能体
-      </el-button>
+      <button class="btn btn-primary" @click="openCreate">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+        </svg>
+        新建智能体
+      </button>
     </div>
 
     <el-empty v-if="!loading && !list.length" description="还没有智能体，点右上角新建一个" />
 
     <div class="grid">
-      <div v-for="a in list" :key="a.id" class="card">
-        <div class="card-top">
-          <span class="emoji">{{ a.emoji }}</span>
+      <article v-for="a in list" :key="a.id" class="card">
+        <header class="card-top">
+          <span class="emoji-badge">{{ a.emoji }}</span>
           <div class="title">
             <strong>{{ a.name }}</strong>
             <div class="tags">
-              <el-tag size="small" :type="a.is_published ? 'success' : 'info'" effect="plain">
-                {{ a.is_published ? '已发布' : '草稿' }}
-              </el-tag>
-              <el-tag v-if="!a.is_public" size="small" type="warning" effect="plain">
-                非公开
-              </el-tag>
+              <span class="chip" :class="a.is_published ? 'chip-live' : 'chip-draft'">
+                <i class="dot" />{{ a.is_published ? '已发布' : '草稿' }}
+              </span>
+              <span v-if="!a.is_public" class="chip chip-private">
+                <i class="dot" />非公开
+              </span>
             </div>
           </div>
-        </div>
-        <p class="desc">{{ a.description || '（无描述）' }}</p>
-        <div class="meta">
-          <span>📚 {{ a.kb_names.length ? a.kb_names.join('、') : '未绑定知识库' }}</span>
-          <span>🧠 {{ a.model || '跟随全局默认' }}</span>
-          <span>💬 {{ a.session_count }} 会话 / {{ a.message_count }} 消息</span>
-        </div>
-        <div class="ops">
-          <el-button size="small" @click="openTest(a)">试跑</el-button>
-          <el-button size="small" @click="openEdit(a)">编辑</el-button>
-          <el-button
-            size="small"
-            :type="a.is_published ? 'warning' : 'success'"
-            plain
+        </header>
+
+        <p class="desc">{{ a.description || '暂无描述，可在编辑中补充' }}</p>
+
+        <ul class="meta">
+          <li>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none">
+              <path d="M4 7.5A2.5 2.5 0 016.5 5h4L13 7.5h4.5A2.5 2.5 0 0120 10v7a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 014 17V7.5z" stroke="currentColor" stroke-width="1.7" />
+            </svg>
+            <span class="text-ellipsis">{{ a.kb_names.length ? a.kb_names.join('、') : '未绑定知识库' }}</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none">
+              <rect x="4" y="6" width="16" height="12" rx="3" stroke="currentColor" stroke-width="1.7" />
+              <circle cx="9" cy="12" r="1.4" fill="currentColor" />
+              <circle cx="15" cy="12" r="1.4" fill="currentColor" />
+            </svg>
+            <span>{{ a.model || '跟随全局默认' }}</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none">
+              <path d="M5 18l-1 4 4-1h9.5A2.5 2.5 0 0020 18.5v-11A2.5 2.5 0 0017.5 5h-11A2.5 2.5 0 004 7.5V18z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+            </svg>
+            <span>{{ a.session_count }} 会话 · {{ a.message_count }} 消息</span>
+          </li>
+        </ul>
+
+        <footer class="ops">
+          <button class="btn btn-ghost" @click="openTest(a)">试跑</button>
+          <button class="btn btn-ghost" @click="openEdit(a)">编辑</button>
+          <button
+            class="btn"
+            :class="a.is_published ? 'btn-ghost' : 'btn-primary'"
             @click="togglePublish(a)"
           >
             {{ a.is_published ? '下线' : '发布' }}
-          </el-button>
-          <el-button size="small" type="danger" plain @click="remove(a)">删除</el-button>
-        </div>
-      </div>
+          </button>
+          <button class="btn btn-soft-danger" @click="remove(a)">删除</button>
+        </footer>
+      </article>
     </div>
 
     <!-- 创建/编辑 -->
@@ -148,7 +180,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
 
 import { agentApi, type AgentItem, type AgentTestResult } from '@/api/agents'
 import { kbApi, type KnowledgeBase } from '@/api/kb'
@@ -345,100 +376,241 @@ onMounted(load)
 </script>
 
 <style scoped>
+/* 与前台一致的设计语言：暖白纸面、墨色文字、松绿点缀、双层阴影的拟物卡片 */
 .head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.head-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: #2f6b57;
+  background: linear-gradient(165deg, #edf2ef, #dfe8e3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 2px rgba(23, 24, 26, 0.06),
+    0 8px 18px rgba(23, 24, 26, 0.06);
 }
 .head h2 {
-  margin: 0 0 4px;
+  margin: 0 0 3px;
   font-size: 18px;
+  letter-spacing: 0.2px;
+  color: #17181a;
 }
 .sub {
   margin: 0;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+  color: #6b7076;
 }
+
+/* ---------- 按钮（拟物实体 / 幽灵 / 软危险） ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.18s ease, color 0.15s, border-color 0.15s;
+}
+.btn:active {
+  transform: scale(0.96);
+}
+.btn-primary {
+  color: #fff;
+  background: linear-gradient(180deg, #3d7f68, #2f6b57);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 1px 2px rgba(23, 24, 26, 0.16),
+    0 8px 18px rgba(47, 107, 87, 0.22);
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 2px 4px rgba(23, 24, 26, 0.18),
+    0 12px 24px rgba(47, 107, 87, 0.28);
+}
+.btn-ghost {
+  color: #3c4248;
+  background: #fff;
+  border-color: #e4e1db;
+  box-shadow: 0 1px 2px rgba(23, 24, 26, 0.05);
+}
+.btn-ghost:hover {
+  transform: translateY(-1px);
+  color: #2f6b57;
+  border-color: #c9d6cf;
+  box-shadow: 0 6px 14px rgba(23, 24, 26, 0.09);
+}
+.btn-soft-danger {
+  color: #a54b4b;
+  background: transparent;
+}
+.btn-soft-danger:hover {
+  background: #f6e7e5;
+  color: #8c3737;
+}
+
+/* ---------- 卡片网格 ---------- */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 .card {
-  padding: 14px 16px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 10px;
-  background: #fff;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid #eceae4;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fdfcfa 100%);
+  box-shadow:
+    0 1px 2px rgba(23, 24, 26, 0.04),
+    0 12px 28px rgba(23, 24, 26, 0.06);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 2px 4px rgba(23, 24, 26, 0.05),
+    0 20px 38px rgba(23, 24, 26, 0.11);
 }
 .card-top {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
-.emoji {
-  font-size: 26px;
+.emoji-badge {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: grid;
+  place-items: center;
+  font-size: 23px;
+  border-radius: 15px;
+  background: linear-gradient(165deg, #f0f3f1, #e4ebe7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(23, 24, 26, 0.05),
+    0 1px 2px rgba(23, 24, 26, 0.07);
 }
 .title {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
+}
+.title strong {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #17181a;
 }
 .tags {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.chip .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+.chip-live {
+  color: #22664f;
+  background: #dceee5;
+}
+.chip-draft {
+  color: #6d7278;
+  background: #eeece8;
+}
+.chip-private {
+  color: #9a6b1c;
+  background: #f6ecd9;
+}
+
 .desc {
   margin: 0;
+  min-height: 38px;
   font-size: 12.5px;
-  color: var(--el-text-color-secondary);
-  min-height: 18px;
+  line-height: 1.7;
+  color: #5b6068;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+
 .meta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  font-size: 12px;
-  color: var(--el-text-color-placeholder);
+  gap: 7px;
+  margin: 0;
+  padding: 11px 12px;
+  list-style: none;
+  border: 1px solid #f0eee9;
+  border-radius: 12px;
+  background: rgba(247, 246, 243, 0.7);
 }
+.meta li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: #6b7076;
+}
+.meta svg {
+  flex: 0 0 auto;
+  color: #9aa0a6;
+}
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ops {
   display: flex;
-  gap: 6px;
-  margin-top: 4px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
 }
-.hint {
-  font-size: 11px;
-  color: var(--el-text-color-placeholder);
-}
-.test-out {
-  margin: 12px 0 0;
-  padding: 12px 14px;
-  max-height: 320px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  line-height: 1.8;
-  background: var(--el-fill-color-lighter);
-  border-radius: 8px;
-}
-.cites {
-  margin-top: 10px;
-}
-.cite-title {
+.ops .btn {
+  height: 30px;
+  padding: 0 12px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
 }
-.cite-item {
-  padding: 6px 10px;
-  font-size: 12px;
-  color: var(--el-text-color-regular);
-  background: var(--el-fill-color-lighter);
-  border-radius: 6px;
-  margin-bottom: 4px;
+.ops .btn-soft-danger {
+  margin-left: auto;
 }
 </style>

@@ -116,9 +116,16 @@ async def ingest_document(doc_id: int, task_id: int | None = None) -> dict:
 
             doc.chunk_config_snapshot = cfg.to_dict()
 
-            # 重跑时先清掉旧切片（幂等）
+            # 重跑/重建时先清掉旧数据（幂等）。
+            # 两个都要清：只清 MySQL 行会让旧向量以旧 id 留在 Milvus，
+            # 同一文档的向量数变成切片数的 N 倍（本次事故就是 3 倍），
+            # 检索时同一内容重复占位，还会拖慢查询。
             await session.execute(delete(Chunk).where(Chunk.doc_id == doc.id))
             await session.commit()
+            try:
+                get_vector_store().delete_by_doc(doc.id)
+            except Exception as exc:  # noqa: BLE001  清理失败不阻断重建，但必须留痕
+                logger.warning("stale_vectors_cleanup_failed", doc_id=doc.id, error=str(exc))
 
             chunk_rows = [
                 Chunk(
