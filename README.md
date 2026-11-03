@@ -246,6 +246,10 @@ docker build -t minio/minio:local .
 | MiMo | 推理模型，会先产生 `reasoning_content` 再输出正文，首 token 通常 1~3s；`astream` 只透传 content |
 | 入库模式 | `INGEST_MODE=inline` 本地进程内执行（重启丢任务）；生产改 `celery` |
 | 切片 | `chunk_size` 单位是**字符**不是 token。`min_chunk_size` 只合并碎片，设大会吞掉正常小节并丢失章节归属 |
+| 切片器 | 块级保护：代码/表格/列表/引用是原子块。**超长代码每片补回围栏**、**超长表格每片重复表头**（没有表头的数据行模型读不懂）、硬切对齐句末标点。切片质量用 `python -m scripts.diagnose_chunks <目录> <size> <overlap>` 验证 |
+| 切片器 | 标题行/加粗伪标题落在块尾会移到下一块开头，否则"有标题没内容"+"有内容没标题"两块都废 |
+| 自定义标记 | `strategy=delimiter` + `delimiter`，**按行首锚定**：`## ` 不会误切 `### `。标记之间不做语义合并（用户给的边界就是边界），只有孤立的标题行会附着到下一块 |
+| 改代码后 | **必须重启 uvicorn 才生效**——reindex 走的是服务进程里已加载的模块，改了 chunker 不重启，重建出来的还是旧结果（本次踩坑：重建后指标纹丝不动才发现） |
 | 上传 | 边接边落临时文件，内存恒定 1MB；同库内 sha256 去重，避免重复付费向量化 |
 | 删库 | 必须同时删 Milvus 向量（`delete_by_kb`），否则留下永远查不到的孤儿数据 |
 | 生成 | 不进 LangGraph 节点：节点跑完才拿到整段，流式就没意义了。图只到"可用上下文"，生成在 service 层流式 |
@@ -291,6 +295,13 @@ python -m scripts.smoke_admin <password>
 
 # 提示词管理冒烟（校验/版本/预览/试跑/回滚/生效/权限，36 项）
 python -m scripts.smoke_prompt <password>
+
+# 切片器单元测试（20 项）
+python -m pytest tests/test_chunker.py -q
+
+# 切片质量诊断（代码块闭合率/句子截断/伪标题）
+python -m scripts.diagnose_chunks ../knowledge/vue3 400 60
+python -m scripts.diagnose_chunks <目录> <size> <overlap> --strategy delimiter --delimiter "## "
 
 # 批量导入语料（新建知识库；加 --kb-id 则追加到已有库）
 python -m scripts.seed_kb "Vue3 基础知识" ../knowledge/vue3 --password <password>
