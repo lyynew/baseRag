@@ -269,6 +269,9 @@ docker build -t minio/minio:local .
 | 删文档 | **向量删失败就拒绝删除文档**（不能软删了文档却留着向量——本次实际发生：删了 README 仍被引用）。chunks 行一并删除 |
 | 重建 | 入库前必须 `delete_by_doc` 清旧向量 + 清旧 chunks 行。只清 MySQL 不清向量会让同一文档的向量数是切片数的 N 倍（本次 3 倍污染） |
 | 孤儿清理 | `python -m scripts.cleanup_orphans`（报告）/ `--apply`（执行）：对齐 MySQL chunks 与 Milvus，幂等可重复 |
+| 删文档 | **向量删失败就拒绝删除文档**（不能软删了文档却留着向量——本次实际发生：删了 README 仍被引用）。chunks 行一并删除 |
+| 重建 | 入库前必须 `delete_by_doc` 清旧向量 + 清旧 chunks 行。只清 MySQL 不清向量会让同一文档的向量数是切片数的 N 倍（本次 3 倍污染） |
+| 孤儿清理 | `python -m scripts.cleanup_orphans`（报告）/ `--apply`（执行）：对齐 MySQL chunks 与 Milvus，幂等可重复 |
 | 生成 | 不进 LangGraph 节点：节点跑完才拿到整段，流式就没意义了。图只到"可用上下文"，生成在 service 层流式 |
 | 流式 DB | SSE 生成器里必须自建 `SessionLocal`，请求依赖的 session 在 `StreamingResponse` 返回后已被关闭 |
 | 引用 | 模型输出 `[1][2]`，正则提取后映射到 hits，**越界编号直接丢弃**（防模型编造引用） |
@@ -315,6 +318,10 @@ python -m scripts.smoke_prompt <password>
 
 # 切片器单元测试（20 项）
 python -m pytest tests/test_chunker.py -q
+
+# 孤儿数据清理（对齐 MySQL chunks 与 Milvus 向量，幂等）
+python -m scripts.cleanup_orphans          # 只报告
+python -m scripts.cleanup_orphans --apply  # 实际清理
 
 # 孤儿数据清理（对齐 MySQL chunks 与 Milvus 向量，幂等）
 python -m scripts.cleanup_orphans          # 只报告
