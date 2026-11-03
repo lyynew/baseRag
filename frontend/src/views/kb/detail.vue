@@ -209,10 +209,21 @@
         <el-divider content-position="left">切片参数</el-divider>
         <el-form-item label="切片策略">
           <el-select v-model="settings.strategy" style="width: 100%">
-            <el-option label="按标题切分（markdown_header）" value="markdown_header" />
+            <el-option label="按标题切分（markdown_header，推荐）" value="markdown_header" />
+            <el-option label="自定义标记（delimiter）" value="delimiter" />
             <el-option label="递归切分（recursive）" value="recursive" />
             <el-option label="固定长度（fixed）" value="fixed" />
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="settings.strategy === 'delimiter'" label="切分标记">
+          <el-input
+            v-model="settings.delimiter"
+            placeholder="如 <!-- chunk --> 或 ## ，按行首匹配"
+            maxlength="64"
+          />
+          <span class="text-muted" style="margin-left: 8px">
+            文档中出现该标记的位置就是切片边界，之间不再做语义合并
+          </span>
         </el-form-item>
         <el-form-item label="切片长度">
           <el-input-number v-model="settings.chunk_size" :min="100" :max="4000" :step="50" />
@@ -229,6 +240,18 @@
         <el-form-item label="保护表格">
           <el-switch v-model="settings.keep_table_intact" />
           <span class="text-muted" style="margin-left: 8px">开启后 Markdown 表格不会被切断</span>
+        </el-form-item>
+        <el-form-item label="保护代码块">
+          <el-switch v-model="settings.keep_code_intact" />
+          <span class="text-muted" style="margin-left: 8px">
+            超长代码按行分片，每片补回围栏与语言标记
+          </span>
+        </el-form-item>
+        <el-form-item label="标题注入">
+          <el-switch v-model="settings.keep_heading" />
+          <span class="text-muted" style="margin-left: 8px">
+            每个切片开头带上所属标题，脱离文档后仍可自解释
+          </span>
         </el-form-item>
 
         <el-divider content-position="left">检索参数</el-divider>
@@ -308,11 +331,14 @@ const settings = reactive({
   name: '',
   description: '',
   sensitivity: 'normal' as 'normal' | 'confidential',
-  strategy: 'recursive' as 'markdown_header' | 'recursive' | 'fixed',
+  strategy: 'recursive' as 'markdown_header' | 'recursive' | 'fixed' | 'delimiter',
+  delimiter: '',
   chunk_size: 512,
   chunk_overlap: 64,
   min_chunk_size: 30,
   keep_table_intact: true,
+  keep_code_intact: true,
+  keep_heading: true,
   top_k: 30,
   rerank_top_n: 8,
   score_threshold: 0.2,
@@ -330,10 +356,13 @@ function openSettings() {
     description: current.description || '',
     sensitivity: current.sensitivity,
     strategy: (cc.strategy as typeof settings.strategy) ?? 'recursive',
+    delimiter: String(cc.delimiter ?? ''),
     chunk_size: Number(cc.chunk_size ?? 512),
     chunk_overlap: Number(cc.chunk_overlap ?? 64),
     min_chunk_size: Number(cc.min_chunk_size ?? 30),
     keep_table_intact: Boolean(cc.keep_table_intact ?? true),
+    keep_code_intact: Boolean(cc.keep_code_intact ?? true),
+    keep_heading: Boolean(cc.keep_heading ?? true),
     top_k: Number(rc.top_k ?? 30),
     rerank_top_n: Number(rc.rerank_top_n ?? 8),
     score_threshold: Number(rc.score_threshold ?? 0.2),

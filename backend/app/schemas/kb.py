@@ -6,12 +6,36 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChunkConfigIn(BaseModel):
-    strategy: str = Field(default="recursive", pattern="^(recursive|markdown_header|fixed)$")
+    """切片参数。默认值必须与 app/services/chunker.py 的 ChunkConfig 保持一致——
+    两处不一致会导致"后台配了 400，实际按 512 切"这种极难排查的问题。"""
+
+    strategy: str = Field(
+        default="recursive",
+        pattern="^(recursive|markdown_header|fixed|delimiter)$",
+        description="delimiter 表示严格按自定义标记切分",
+    )
     chunk_size: int = Field(default=512, ge=100, le=4000, description="单位：字符")
     chunk_overlap: int = Field(default=64, ge=0, le=1000)
     # 只合并真正的碎片（如孤立标题行）。设过大会把正常小节吞进上一块，导致章节归属错乱
     min_chunk_size: int = Field(default=30, ge=0, le=1000)
+
+    # 结构块保护：代码/表格/列表/引用整体不切碎
     keep_table_intact: bool = True
+    keep_code_intact: bool = True
+    keep_list_intact: bool = True
+    keep_quote_intact: bool = True
+    # 结构块允许超出 chunk_size 的倍数，超过才内部分片
+    block_max_ratio: float = Field(default=2.0, ge=1.0, le=5.0)
+    # 标题注入与相邻小块合并
+    keep_heading: bool = True
+    merge_adjacent: bool = True
+
+    # 自定义标记策略
+    delimiter: str | None = Field(
+        default=None, max_length=64, description="如 <!-- chunk --> 或 ## "
+    )
+    keep_delimiter: bool = True
+
     separators: list[str] | None = None
 
 
