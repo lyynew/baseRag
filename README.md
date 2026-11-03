@@ -58,6 +58,11 @@ GET    /api/v1/admin/agents | POST          智能体列表（含草稿/用量�
 GET|PATCH|DELETE /api/v1/admin/agents/{id}  详情 / 修改（立即生效）/ 软删
 POST   /api/v1/admin/agents/{id}/publish    发布 / 下线（?published=）
 POST   /api/v1/admin/agents/{id}/test       按完整配置试跑
+GET    /api/v1/agents                       前台：我可用的已发布智能体
+GET    /api/v1/admin/agents | POST          智能体列表（含草稿/用量）/ 创建
+GET|PATCH|DELETE /api/v1/admin/agents/{id}  详情 / 修改（立即生效）/ 软删
+POST   /api/v1/admin/agents/{id}/publish    发布 / 下线（?published=）
+POST   /api/v1/admin/agents/{id}/test       按完整配置试跑
 GET    /api/v1/admin/settings | PUT /{key}  系统参数 KV（预留）
 GET    /api/v1/admin/prompts                提示词列表（含是否已自定义）
 GET    /api/v1/admin/prompts/variables      可用变量清单
@@ -256,6 +261,7 @@ docker build -t minio/minio:local .
 | 切片器 | 块级保护：代码/表格/列表/引用是原子块。**超长代码每片补回围栏**、**超长表格每片重复表头**（没有表头的数据行模型读不懂）、硬切对齐句末标点。切片质量用 `python -m scripts.diagnose_chunks <目录> <size> <overlap>` 验证 |
 | 切片器 | 标题行/加粗伪标题落在块尾会移到下一块开头，否则"有标题没内容"+"有内容没标题"两块都废 |
 | 自定义标记 | `strategy=delimiter` + `delimiter`，**按行首锚定**：`## ` 不会误切 `### `。标记之间不做语义合并（用户给的边界就是边界），只有孤立的标题行会附着到下一块 |
+| 智能体 | 会话必绑智能体（前台），配置优先级 **agent 覆盖 → 知识库覆盖 → 全局**。知识库访问权经智能体间接授予（建会话时不再校验 kb_members）；已发布的修改**立即生效**（审计留痕）。改后端代码后必须重启 uvicorn，否则重建/问答仍走旧逻辑 |
 | 智能体 | 会话必绑智能体（前台），配置优先级 **agent 覆盖 → 知识库覆盖 → 全局**。知识库访问权经智能体间接授予（建会话时不再校验 kb_members）；已发布的修改**立即生效**（审计留痕）。改后端代码后必须重启 uvicorn，否则重建/问答仍走旧逻辑 |
 | 改代码后 | **必须重启 uvicorn 才生效**——reindex 走的是服务进程里已加载的模块，改了 chunker 不重启，重建出来的还是旧结果（本次踩坑：重建后指标纹丝不动才发现） |
 | 上传 | 边接边落临时文件，内存恒定 1MB；同库内 sha256 去重，避免重复付费向量化 |
