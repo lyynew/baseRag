@@ -4,6 +4,7 @@ export interface ChatSession {
   id: number
   title: string
   kb_ids: number[]
+  agent_id: number | null
   chat_provider: string | null
   chat_model: string | null
   message_count: number
@@ -65,9 +66,9 @@ export type StreamEvent =
   | { type: 'error'; data: { code: string; message: string } }
 
 export const chatApi = {
-  createSession(kbIds: number[], title?: string) {
+  createSession(agentId: number, title?: string) {
     return http
-      .post<ChatSession>('/chat/sessions', { kb_ids: kbIds, title })
+      .post<ChatSession>('/chat/sessions', { agent_id: agentId, title })
       .then((r) => r.data)
   },
   sessions() {

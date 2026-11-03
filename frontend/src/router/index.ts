@@ -80,6 +80,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '知识库详情', hidden: true, admin: true },
       },
       {
+        path: 'system/agents',
+        name: 'Agents',
+        component: () => import('@/views/system/agents.vue'),
+        meta: {
+          title: '智能体',
+          icon: 'MagicStick',
+          perm: 'config:read',
+          group: '系统管理',
+          admin: true,
+        },
+      },
+      {
         path: 'system/users',
         name: 'Users',
         component: () => import('@/views/system/users.vue'),

@@ -29,7 +29,7 @@ router = APIRouter()
 async def create_session(
     payload: SessionCreate, db: DbSession, user: CurrentUser
 ) -> SessionOut:
-    session = await chat_service.create_session(db, user, payload.kb_ids, payload.title)
+    session = await chat_service.create_session(db, user, payload.agent_id, payload.title)
     return SessionOut.model_validate(session)
 
 

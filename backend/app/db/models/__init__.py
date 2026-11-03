@@ -4,6 +4,7 @@ Alembic 通过 `from app.db.models import *` 发现所有表，新增模型务�
 否则 autogenerate 会漏表。
 """
 
+from app.db.models.agent import Agent
 from app.db.models.auth import Permission, Role, RolePermission, User, UserRole
 from app.db.models.chat import (
     AuditLog,
@@ -18,6 +19,8 @@ from app.db.models.knowledge import Chunk, Document, IngestTask, KbMember, Knowl
 from app.db.models.prompt import PromptTemplate, PromptVersion
 
 __all__ = [
+    # 智能体
+    "Agent",
     # 认证与权限
     "User",
     "Role",

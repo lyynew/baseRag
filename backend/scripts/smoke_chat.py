@@ -114,7 +114,10 @@ def main() -> int:
         check("入库完成", t.get("status") == "success", str(t)[:200])
 
         # 建会话
-        r = c.post("/api/v1/chat/sessions", headers=H, json={"kb_ids": [kb_id]})
+        from scripts.agent_helper import ensure_published_agent
+
+        aid = ensure_published_agent(c, H, kb_id)
+        r = c.post("/api/v1/chat/sessions", headers=H, json={"agent_id": aid})
         if not check("创建会话", r.status_code == 200, r.text[:300]):
             return 1
         sid = r.json()["id"]

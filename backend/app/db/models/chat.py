@@ -28,6 +28,8 @@ class ChatSession(Base, PKMixin, TimestampMixin, SoftDeleteMixin):
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="新对话")
     kb_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list, comment="绑定的知识库")
+    # 所属智能体。NULL = 旧数据或后台调试会话；前台新会话必填
+    agent_id: Mapped[int | None] = mapped_column(BigInteger)
     chat_provider: Mapped[str | None] = mapped_column(String(32))
     chat_model: Mapped[str | None] = mapped_column(String(64))
     # 滚动摘要：历史超阈值时把最老的几轮压成摘要，避免 token 无限增长

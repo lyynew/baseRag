@@ -154,11 +154,14 @@ def main() -> int:
         if not kbs:
             check("存在可用知识库", False, "没有知识库，跳过生效验证")
         else:
+            from scripts.agent_helper import ensure_published_agent
+
             kb_id = kbs[0]["id"]
+            aid = ensure_published_agent(c, H, kb_id)
             r = c.post(
                 "/api/v1/chat/sessions",
                 headers=H,
-                json={"kb_ids": [kb_id], "title": "提示词生效验证"},
+                json={"agent_id": aid, "title": "提示词生效验证"},
             )
             sid = r.json()["id"] if r.status_code in (200, 201) else None
             if not sid:

@@ -254,7 +254,7 @@
           />
 
           <div class="composer-bar">
-            <div class="kb-chip" :title="kbNames">
+            <div class="kb-chip" :title="agentChip">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none">
                 <path
                   d="M4 7.5A2.5 2.5 0 016.5 5h4L13 7.5h4.5A2.5 2.5 0 0120 10v7a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 014 17V7.5z"
@@ -263,7 +263,7 @@
                   stroke-linejoin="round"
                 />
               </svg>
-              {{ kbNames }}
+              {{ agentChip }}
             </div>
 
             <button v-if="sending" class="send stop" title="停止生成" @click="stop">
@@ -296,32 +296,33 @@
 
     <!-- 新建对话 -->
     <UiModal v-model:open="newOpen" title="新建对话">
-      <div v-if="kbs.length === 0" class="empty-kb">
-        <p>当前没有可用的知识库。</p>
-        <p class="sub">问答必须基于知识库。请联系管理员授权，或先在后台创建并上传文档。</p>
-        <button v-if="canAdmin" class="mini-ghost" @click="goAdminKb">去创建知识库</button>
+      <div v-if="agents.length === 0" class="empty-kb">
+        <p>还没有可用的智能体。</p>
+        <p class="sub">知识库和回答方式由管理员配置成智能体后开放使用。</p>
+        <button v-if="canAdmin" class="mini-ghost" @click="goAdminKb">去创建智能体</button>
       </div>
 
       <template v-else>
         <div class="field">
-          <label>选择知识库</label>
+          <label>选择智能体</label>
           <div class="kb-list">
             <button
-              v-for="kb in kbs"
-              :key="kb.id"
+              v-for="a in agents"
+              :key="a.id"
               class="kb-opt"
-              :class="{ on: newKbIds.includes(kb.id) }"
-              @click="toggleKb(kb.id)"
+              :class="{ on: newAgentId === a.id }"
+              @click="newAgentId = a.id"
             >
               <span class="tick">
-                <svg v-if="newKbIds.includes(kb.id)" viewBox="0 0 24 24" width="12" height="12" fill="none">
+                <svg v-if="newAgentId === a.id" viewBox="0 0 24 24" width="12" height="12" fill="none">
                   <path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
               </span>
-              <span class="kb-opt-name">{{ kb.name }}</span>
-              <span class="kb-opt-meta">{{ kb.doc_count }} 篇</span>
+              <span class="kb-opt-name">{{ a.emoji }} {{ a.name }}</span>
+              <span class="kb-opt-meta">{{ a.kb_count }} 库</span>
             </button>
           </div>
+          <p v-if="pickedAgent?.description" class="agent-desc">{{ pickedAgent.description }}</p>
         </div>
 
         <div class="field">
@@ -332,7 +333,7 @@
 
       <template #footer>
         <button class="btn ghost" @click="newOpen = false">取消</button>
-        <button class="btn primary" :disabled="!newKbIds.length || creating" @click="createSession">
+        <button class="btn primary" :disabled="!newAgentId || creating" @click="createSession">
           {{ creating ? '创建中…' : '开始对话' }}
         </button>
       </template>
@@ -382,7 +383,7 @@ import { useRouter } from 'vue-router'
 
 import { authApi } from '@/api/auth'
 import { askStream, chatApi, type ChatMessage, type ChatSession, type Citation } from '@/api/chat'
-import { kbApi, type KnowledgeBase } from '@/api/kb'
+import { agentApi, type AgentBrief } from '@/api/agents'
 import UiModal from '@/components/ui/UiModal.vue'
 import { hasAdminAccess } from '@/router'
 import { useUserStore } from '@/stores/user'
@@ -412,11 +413,11 @@ const sessions = ref<ChatSession[]>([])
 const currentId = ref<number | null>(null)
 const messages = ref<UiMessage[]>([])
 const question = ref('')
-const kbs = ref<KnowledgeBase[]>([])
+const agents = ref<AgentBrief[]>([])
+const newAgentId = ref<number | null>(null)
 const retrieval = ref<{ need_retrieve: boolean; reason: string; hits: unknown[] } | null>(null)
 
 const newOpen = ref(false)
-const newKbIds = ref<number[]>([])
 const newTitle = ref('')
 const creating = ref(false)
 
@@ -443,10 +444,16 @@ const suggestions = [
   '服务器磁盘告警阈值是多少？',
 ]
 
-const kbNames = computed(() => {
+/** 当前会话所属智能体；旧会话（无 agent）显示知识库 id */
+const agentChip = computed(() => {
+  const aid = currentSession.value?.agent_id
+  if (aid) {
+    const a = agents.value.find((x) => x.id === aid)
+    if (a) return `${a.emoji} ${a.name}`
+    return '智能体已下线'
+  }
   const ids = currentSession.value?.kb_ids || []
-  const names = ids.map((id) => kbs.value.find((k) => k.id === id)?.name || `库 ${id}`)
-  return names.length ? names.join('、') : '未绑定知识库'
+  return ids.length ? `自由模式 · ${ids.length} 个知识库` : '未绑定知识库'
 })
 
 /** 会话按时间分组，让长列表有层次而不是一条大长串 */
@@ -528,27 +535,24 @@ async function selectSession(id: number) {
   scrollToBottom(true)
 }
 
-function toggleKb(id: number) {
-  const i = newKbIds.value.indexOf(id)
-  if (i >= 0) newKbIds.value.splice(i, 1)
-  else newKbIds.value.push(id)
-}
+const pickedAgent = computed(() => agents.value.find((a) => a.id === newAgentId.value) ?? null)
 
 function openNew() {
+  // 默认沿用最近一次会话的智能体；只有一个可用时自动选中
   const last = sessions.value[0]
-  if (last?.kb_ids?.length) newKbIds.value = [...last.kb_ids]
-  else if (kbs.value.length === 1) newKbIds.value = [kbs.value[0].id]
-  else newKbIds.value = []
+  if (last?.agent_id) newAgentId.value = last.agent_id
+  else if (agents.value.length === 1) newAgentId.value = agents.value[0].id
+  else newAgentId.value = null
 
   newTitle.value = ''
   newOpen.value = true
 }
 
 async function createSession() {
-  if (!newKbIds.value.length) return
+  if (!newAgentId.value) return
   creating.value = true
   try {
-    const s = await chatApi.createSession(newKbIds.value, newTitle.value || undefined)
+    const s = await chatApi.createSession(newAgentId.value, newTitle.value || undefined)
     newOpen.value = false
     await loadSessions()
     await selectSession(s.id)
@@ -578,8 +582,8 @@ async function removeSession(id: number) {
 
 function useSuggestion(text: string) {
   if (!currentId.value) {
-    newKbIds.value =
-      kbs.value.length === 1 ? [kbs.value[0].id] : (sessions.value[0]?.kb_ids ?? [])
+    newAgentId.value =
+      agents.value.length === 1 ? agents.value[0].id : (sessions.value[0]?.agent_id ?? null)
     newTitle.value = text.slice(0, 30)
     question.value = text
     newOpen.value = true
@@ -767,7 +771,7 @@ function onDocClick() {
 onMounted(async () => {
   document.addEventListener('click', onDocClick)
   await loadSessions()
-  kbs.value = await kbApi.list()
+  agents.value = await agentApi.listMine().catch(() => [])
   if (sessions.value.length) await selectSession(sessions.value[0].id)
   if (window.innerWidth < 900) sidebarOpen.value = false
 })
@@ -1879,6 +1883,12 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.agent-desc {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
 .kb-opt-meta {
   font-size: 11.5px;
   color: var(--ink-3);

@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.core.logging import get_logger
+from app.core.rbac import user_permission_codes
+from app.db.models.agent import Agent
 from app.db.models.auth import User
 from app.db.models.chat import ChatMessage, ChatSession, LlmCallLog
 from app.db.models.enums import ChatRole
@@ -44,17 +46,31 @@ async def _build_context_messages(
     kb_id: int | None = None,
     kb_name: str = "",
     sources: int = 0,
+    overrides: dict | None = None,
 ) -> tuple[list[dict], int]:
-    """拼装问答 messages，system 段从提示词模板渲染。
+    """拼装问答 messages，system 段来源优先级：智能体覆盖 → 全局/知识库模板。
 
     返回 (messages, 提示词版本号)，版本号写入 llm_call_logs，用于事后归因。
+    智能体覆盖版 version=0（无独立版本历史，配置快照在 agents.prompt_overrides 里）。
     """
-    system, version = await prompt_service.render_for(
-        prompt_service.CODE_SYSTEM_QA,
-        {"question": question, "context": context, "kb_name": kb_name, "sources": sources},
-        kb_id=kb_id,
-        db=db,
-    )
+    if overrides and overrides.get("system_qa"):
+        system = prompt_service.render(
+            overrides["system_qa"],
+            {
+                "question": question,
+                "context": context,
+                "kb_name": kb_name,
+                "sources": sources,
+            },
+        )
+        version = 0
+    else:
+        system, version = await prompt_service.render_for(
+            prompt_service.CODE_SYSTEM_QA,
+            {"question": question, "context": context, "kb_name": kb_name, "sources": sources},
+            kb_id=kb_id,
+            db=db,
+        )
     messages: list[dict] = [{"role": "system", "content": system}]
     for h in history:
         role = h.get("role")
@@ -66,15 +82,25 @@ async def _build_context_messages(
 
 
 async def _build_direct_messages(
-    db: AsyncSession, question: str, kb_id: int | None = None, kb_name: str = ""
+    db: AsyncSession,
+    question: str,
+    kb_id: int | None = None,
+    kb_name: str = "",
+    overrides: dict | None = None,
 ) -> tuple[list[dict], int]:
     """寒暄/无关问题：走 direct_answer 模板，不检索、不带资料。"""
-    system, version = await prompt_service.render_for(
-        prompt_service.CODE_DIRECT,
-        {"question": question, "kb_name": kb_name},
-        kb_id=kb_id,
-        db=db,
-    )
+    if overrides and overrides.get("direct_answer"):
+        system = prompt_service.render(
+            overrides["direct_answer"], {"question": question, "kb_name": kb_name}
+        )
+        version = 0
+    else:
+        system, version = await prompt_service.render_for(
+            prompt_service.CODE_DIRECT,
+            {"question": question, "kb_name": kb_name},
+            kb_id=kb_id,
+            db=db,
+        )
     return (
         [
             {"role": "system", "content": system},
@@ -131,7 +157,7 @@ async def _next_seq(db: AsyncSession, session_id: int) -> int:
 
 
 async def _resolve_kb_config(
-    db: AsyncSession, user: User, kb_ids: list[int]
+    db: AsyncSession, user: User, kb_ids: list[int], *, skip_kb_check: bool = False
 ) -> dict[str, Any]:
     """取会话绑定知识库的检索参数（取第一个库的配置作为代表）。
 
@@ -148,8 +174,11 @@ async def _resolve_kb_config(
             "prompt_kb_id": None,
         }
 
-    for kb_id in kb_ids:
-        await kb_service.ensure_kb_access(db, user, kb_id)
+    # 智能体会话：库访问权已通过智能体间接授予（创建会话时校验过），
+    # 这里再查一遍 kb_members 只会误伤普通用户。
+    if not skip_kb_check:
+        for kb_id in kb_ids:
+            await kb_service.ensure_kb_access(db, user, kb_id)
 
     rows = (
         await db.execute(select(KnowledgeBase).where(KnowledgeBase.id.in_(kb_ids)))
@@ -169,19 +198,42 @@ async def _resolve_kb_config(
 
 
 async def create_session(
-    db: AsyncSession, user: User, kb_ids: list[int], title: str | None = None
+    db: AsyncSession, user: User, agent_id: int, title: str | None = None
 ) -> ChatSession:
+    """前台创建会话：必须绑定已发布且对用户可见的智能体。
+
+    知识库不再由用户选择——来自智能体的绑定关系，管理员控制。
+    """
+    agent = (
+        await db.execute(select(Agent).where(Agent.id == agent_id, Agent.is_deleted == 0))
+    ).scalar_one_or_none()
+    if agent is None:
+        raise AppError("智能体不存在", code=ErrorCode.NOT_FOUND, status_code=404)
+
+    kb_ids = list(agent.kb_ids or [])
     if not kb_ids:
-        raise AppError("请至少选择一个知识库", code=ErrorCode.VALIDATION_ERROR, status_code=422)
-    for kb_id in kb_ids:
-        await kb_service.ensure_kb_access(db, user, kb_id)
+        raise AppError(
+            "该智能体未绑定知识库，请联系管理员", code=ErrorCode.VALIDATION_ERROR, status_code=422
+        )
+
+    # 可见性：全员 或 超管/管理员
+    is_manager = user.is_superuser or "config:read" in user_permission_codes(user)
+    if not agent.is_published and not is_manager:
+        raise AppError("该智能体未发布", code=ErrorCode.FORBIDDEN, status_code=403)
+    if not agent.is_public and not is_manager:
+        raise AppError("没有使用该智能体的权限", code=ErrorCode.FORBIDDEN, status_code=403)
+
+    # 注意：这里不做 kb_members 校验——知识库访问权通过智能体间接授予，
+    # 这是智能体模式的核心语义（管理员配库时就已决定受众）。
+    # 文档浏览/下载等直接访问仍走各自的 ensure_kb_access，不受影响。
 
     session = ChatSession(
         user_id=user.id,
-        title=title or "新对话",
+        title=title or agent.name,
         kb_ids=kb_ids,
-        chat_provider=settings.default_chat_provider,
-        chat_model=get_llm().model,
+        agent_id=agent.id,
+        chat_provider=agent.provider or settings.default_chat_provider,
+        chat_model=agent.model or get_llm().model,
     )
     db.add(session)
     await db.commit()
@@ -236,7 +288,31 @@ async def _prepare(
         raise AppError("会话不存在", code=ErrorCode.NOT_FOUND, status_code=404)
 
     kb_ids = list(session.kb_ids or [])
-    cfg = await _resolve_kb_config(db, user, kb_ids)
+
+    # 会话所属智能体：可能已被删除（软删），此时按"无智能体"降级，历史会话仍可回看但提问报错
+    agent = None
+    if session.agent_id:
+        agent = (
+            await db.execute(
+                select(Agent).where(Agent.id == session.agent_id, Agent.is_deleted == 0)
+            )
+        ).scalar_one_or_none()
+        if agent is None:
+            raise AppError(
+                "该对话所属的智能体已被删除，请新建对话",
+                code=ErrorCode.NOT_FOUND,
+                status_code=404,
+            )
+        if not agent.is_published:
+            raise AppError(
+                "该智能体已下线，请新建对话", code=ErrorCode.FORBIDDEN, status_code=403
+            )
+
+    cfg = await _resolve_kb_config(db, user, kb_ids, skip_kb_check=agent is not None)
+    if agent is not None and agent.retrieve_config:
+        # 智能体级检索参数覆盖知识库级
+        cfg.update({k: v for k, v in agent.retrieve_config.items() if v is not None})
+    overrides = dict(agent.prompt_overrides or {}) if agent is not None else None
     history = await _load_history(db, session_id)
 
     # 改写用的模型：与问答同一通道，避免维护两套配置
@@ -286,6 +362,8 @@ async def _prepare(
         "cfg": cfg,
         "kb_name": cfg.get("kb_name", ""),
         "prompt_kb_id": cfg.get("prompt_kb_id"),
+        "agent": agent,
+        "overrides": overrides,
     }
 
 
@@ -369,7 +447,7 @@ async def ask(
     started = time.perf_counter()
     if not prep["need_retrieve"]:
         messages, prompt_version = await _build_direct_messages(
-            db, question, prep["prompt_kb_id"], prep["kb_name"]
+            db, question, prep["prompt_kb_id"], prep["kb_name"], overrides=prep["overrides"]
         )
     else:
         messages, prompt_version = await _build_context_messages(
@@ -380,6 +458,7 @@ async def ask(
             kb_id=prep["prompt_kb_id"],
             kb_name=prep["kb_name"],
             sources=len(prep["hits"]),
+            overrides=prep["overrides"],
         )
     prompt_code = (
         prompt_service.CODE_DIRECT
@@ -387,7 +466,12 @@ async def ask(
         else prompt_service.CODE_SYSTEM_QA
     )
 
-    result: ChatResult = await llm.chat(messages, max_tokens=2048)
+    gen = (prep["agent"].gen_settings if prep["agent"] else None) or {}
+    result: ChatResult = await llm.chat(
+        messages,
+        max_tokens=int(gen.get("max_tokens", 2048)),
+        temperature=float(gen.get("temperature", 0.3)),
+    )
     latency = int((time.perf_counter() - started) * 1000)
 
     msg = await _persist_answer(
@@ -473,7 +557,7 @@ async def ask_stream(
 
         if not prep["need_retrieve"]:
             messages, prompt_version = await _build_direct_messages(
-                db, question, prep["prompt_kb_id"], prep["kb_name"]
+                db, question, prep["prompt_kb_id"], prep["kb_name"], overrides=prep["overrides"]
             )
             prompt_code = prompt_service.CODE_DIRECT
         else:
@@ -485,15 +569,22 @@ async def ask_stream(
                 kb_id=prep["prompt_kb_id"],
                 kb_name=prep["kb_name"],
                 sources=len(prep["hits"]),
+                overrides=prep["overrides"],
             )
             prompt_code = prompt_service.CODE_SYSTEM_QA
 
+        gen = (prep["agent"].gen_settings if prep["agent"] else None) or {}
         stats = StreamStats()
         started = time.perf_counter()
         buffer: list[str] = []
 
         try:
-            async for piece in llm.astream(messages, max_tokens=2048, stats=stats):
+            async for piece in llm.astream(
+                messages,
+                temperature=float(gen.get("temperature", 0.3)),
+                max_tokens=int(gen.get("max_tokens", 2048)),
+                stats=stats,
+            ):
                 buffer.append(piece)
                 yield {"event": "delta", "data": {"text": piece}}
         except AppError as exc:

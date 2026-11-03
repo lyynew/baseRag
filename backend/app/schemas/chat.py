@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class SessionCreate(BaseModel):
-    kb_ids: list[int] = Field(min_length=1, max_length=10)
+    agent_id: int = Field(description="所属智能体，知识库由智能体决定，用户不选")
     title: str | None = Field(default=None, max_length=100)
 
 
@@ -16,6 +16,7 @@ class SessionOut(BaseModel):
     id: int
     title: str
     kb_ids: list[int]
+    agent_id: int | None = None
     chat_provider: str | None = None
     chat_model: str | None = None
     message_count: int
